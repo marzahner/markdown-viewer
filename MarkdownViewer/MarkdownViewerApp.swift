@@ -190,6 +190,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func windowWillClose(_ notification: Notification) {
         if let window = notification.object as? NSWindow {
+            // Remove all observers for this window
+            NotificationCenter.default.removeObserver(self, name: NSWindow.didMoveNotification, object: window)
+            NotificationCenter.default.removeObserver(self, name: NSWindow.didResizeNotification, object: window)
+
+            // Clear the content view and delegate
             window.contentView = nil
             window.delegate = nil
         }
@@ -480,7 +485,10 @@ struct MenuView: View {
             appDelegate.addWindow(window)
         }
 
+        // Bring app and window to front
+        NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
 
         // Save position on move/resize
         NotificationCenter.default.addObserver(
@@ -574,7 +582,9 @@ struct MarkdownView: View {
         var blocks: [MarkdownBlock] = []
         let lines = markdown.components(separatedBy: .newlines)
         var i = 0
-        
+
+        print("Parsing markdown with \(lines.count) lines")
+
         while i < lines.count {
             let line = lines[i]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -623,14 +633,23 @@ struct MarkdownView: View {
             }
             // Images - pattern: ![alt](url) or ![alt](url "title")
             // Check if the line contains ONLY an image (optionally with surrounding whitespace)
-            else if trimmed.range(of: "^!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)$", options: .regularExpression) != nil {
-                let imagePattern = "!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)"
-                if let regex = try? NSRegularExpression(pattern: imagePattern),
-                   let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
-                    let altText = match.range(at: 1).location != NSNotFound ? String(trimmed[Range(match.range(at: 1), in: trimmed)!]) : ""
-                    let url = match.range(at: 2).location != NSNotFound ? String(trimmed[Range(match.range(at: 2), in: trimmed)!]) : ""
-                    print("Found image: alt=\(altText), url=\(url)")
-                    blocks.append(.image(url: url, alt: altText))
+            else if trimmed.hasPrefix("![") {
+                print("Line starts with image marker: '\(trimmed)'")
+                if trimmed.range(of: "^!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)$", options: .regularExpression) != nil {
+                    let imagePattern = "!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)"
+                    if let regex = try? NSRegularExpression(pattern: imagePattern),
+                       let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
+                        let altText = match.range(at: 1).location != NSNotFound ? String(trimmed[Range(match.range(at: 1), in: trimmed)!]) : ""
+                        let url = match.range(at: 2).location != NSNotFound ? String(trimmed[Range(match.range(at: 2), in: trimmed)!]) : ""
+                        print("✅ Found image: alt=\(altText), url=\(url)")
+                        blocks.append(.image(url: url, alt: altText))
+                    } else {
+                        print("❌ Image regex didn't match")
+                    }
+                } else {
+                    print("❌ Image pattern test failed for: '\(trimmed)'")
+                    // Still try to parse as paragraph
+                    blocks.append(.paragraph(line))
                 }
             }
             // Empty line
