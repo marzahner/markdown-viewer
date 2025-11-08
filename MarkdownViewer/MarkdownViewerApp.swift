@@ -81,6 +81,13 @@ enum MarkdownTheme: String, CaseIterable, Identifiable {
 struct FileInfo: Codable {
     let path: String
     let dateAdded: Date
+    let bookmarkData: Data?
+
+    init(path: String, dateAdded: Date, bookmarkData: Data? = nil) {
+        self.path = path
+        self.dateAdded = dateAdded
+        self.bookmarkData = bookmarkData
+    }
 }
 
 // MARK: - Recent Files Manager
@@ -97,9 +104,24 @@ class RecentFilesManager: ObservableObject {
     func addFile(_ url: URL) {
         // Remove if already exists
         recentFiles.removeAll { $0.path == url.path }
-        // Add to front with current date
-        let fileInfo = FileInfo(path: url.path, dateAdded: Date())
+
+        // Create security-scoped bookmark for App Sandbox
+        var bookmarkData: Data? = nil
+        do {
+            bookmarkData = try url.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            print("✅ Created security-scoped bookmark for: \(url.path)")
+        } catch {
+            print("⚠️ Failed to create bookmark for \(url.path): \(error)")
+        }
+
+        // Add to front with current date and bookmark
+        let fileInfo = FileInfo(path: url.path, dateAdded: Date(), bookmarkData: bookmarkData)
         recentFiles.insert(fileInfo, at: 0)
+
         // Limit to max
         if recentFiles.count > maxRecent {
             recentFiles = Array(recentFiles.prefix(maxRecent))
@@ -108,8 +130,36 @@ class RecentFilesManager: ObservableObject {
     }
 
     func getURL(for fileInfo: FileInfo) -> URL? {
+        // Try to resolve from bookmark first (works with App Sandbox)
+        if let bookmarkData = fileInfo.bookmarkData {
+            do {
+                var isStale = false
+                let url = try URL(
+                    resolvingBookmarkData: bookmarkData,
+                    options: .withSecurityScope,
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &isStale
+                )
+
+                if isStale {
+                    print("⚠️ Bookmark is stale for: \(fileInfo.path)")
+                }
+
+                print("✅ Resolved bookmark for: \(url.path)")
+                return url
+            } catch {
+                print("❌ Failed to resolve bookmark for \(fileInfo.path): \(error)")
+            }
+        }
+
+        // Fallback to file path (might not work with strict sandbox)
         let url = URL(fileURLWithPath: fileInfo.path)
-        return FileManager.default.fileExists(atPath: fileInfo.path) ? url : nil
+        if FileManager.default.fileExists(atPath: fileInfo.path) {
+            print("⚠️ Using fallback path for: \(fileInfo.path)")
+            return url
+        }
+
+        return nil
     }
 
     private func saveRecent() {
@@ -618,6 +668,7 @@ struct MarkdownView: View {
     @State private var markdownString: String = ""
     @State private var isLoading = true
     @State private var parsedBlocks: [MarkdownBlock] = []
+    @State private var hasSecurityAccess = false
 
     init(fileURL: URL, window: NSWindow? = nil, theme: MarkdownTheme = .gameboy) {
         self.fileURL = fileURL
@@ -646,7 +697,18 @@ struct MarkdownView: View {
             }
         }
         .onAppear {
+            // Start accessing security-scoped resource for the lifetime of the window
+            hasSecurityAccess = fileURL.startAccessingSecurityScopedResource()
+            print("Started security-scoped access for window: \(hasSecurityAccess)")
             loadMarkdown()
+        }
+        .onDisappear {
+            // Stop accessing when window closes
+            if hasSecurityAccess {
+                fileURL.stopAccessingSecurityScopedResource()
+                hasSecurityAccess = false
+                print("Stopped security-scoped access for window")
+            }
         }
     }
     
@@ -654,17 +716,7 @@ struct MarkdownView: View {
         print("📖 Loading markdown from: \(fileURL.path)")
 
         DispatchQueue.global(qos: .userInitiated).async {
-            // Start accessing security-scoped resource (required for App Sandbox)
-            let didStartAccess = self.fileURL.startAccessingSecurityScopedResource()
-            print("Security-scoped resource access: \(didStartAccess)")
-
-            defer {
-                if didStartAccess {
-                    self.fileURL.stopAccessingSecurityScopedResource()
-                    print("Stopped accessing security-scoped resource")
-                }
-            }
-
+            // Security-scoped access is already started in onAppear for the lifetime of the window
             do {
                 print("Attempting to read file...")
                 let content = try String(contentsOf: self.fileURL, encoding: .utf8)
@@ -983,14 +1035,7 @@ struct MarkdownView: View {
         let _ = print("Loading local image: \(url) -> \(imageURL?.path ?? "nil")")
 
         if let imageURL = imageURL {
-            // For local images, we need security-scoped access
-            let didStartAccess = fileURL.startAccessingSecurityScopedResource()
-            defer {
-                if didStartAccess {
-                    fileURL.stopAccessingSecurityScopedResource()
-                }
-            }
-
+            // Security-scoped access is already active for the window lifetime
             if let nsImage = NSImage(contentsOf: imageURL) {
                 let _ = print("✅ Successfully loaded local image: \(imageURL.path)")
                 Image(nsImage: nsImage)
