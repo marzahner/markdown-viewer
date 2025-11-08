@@ -5,6 +5,7 @@ Game Boy themed menu bar markdown reader for macOS.
 ## Features
 
 ### Core Functionality
+
 ✓ **Persistent menu** - Click to open, stays open until X button clicked
 ✓ **Drag & drop** - Drop .md files to open in new windows
 ✓ **Recent files (5)** - Shows last modified time with "Show in Finder" button
@@ -12,6 +13,7 @@ Game Boy themed menu bar markdown reader for macOS.
 ✓ **No auto-popup** - Manual control only
 
 ### Markdown Support
+
 ✓ **Headers** - All 6 levels with appropriate sizing
 ✓ **Text formatting** - Bold, italic, inline code with syntax highlighting
 ✓ **Lists** - Bullet and numbered lists
@@ -21,6 +23,7 @@ Game Boy themed menu bar markdown reader for macOS.
 ✓ **Text selection** - All content selectable
 
 ### Themes
+
 ✓ **Game Boy** - Classic green palette (default)
 ✓ **macOS** - System colors
 ✓ **Deep Blue** - High contrast blue theme
@@ -49,4 +52,4 @@ Game Boy themed menu bar markdown reader for macOS.
 
 ## File Preview
 
-![Screenshot](markdown-viewer-screenshot.avif "Markdown Screenshot")
+![Screenshot](markdown-viewer-screenshot-new.avif "Markdown Screenshot")
