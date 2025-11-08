@@ -166,7 +166,7 @@ struct MarkdownViewerApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var popover: NSPopover?
-    var openWindows: Set<NSWindow> = []
+    var openWindows = NSHashTable<NSWindow>.weakObjects()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -190,12 +190,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func windowWillClose(_ notification: Notification) {
         if let window = notification.object as? NSWindow {
-            openWindows.remove(window)
+            window.contentView = nil
+            window.delegate = nil
         }
     }
 
     func addWindow(_ window: NSWindow) {
-        openWindows.insert(window)
+        openWindows.add(window)
         window.isReleasedWhenClosed = true
     }
     
@@ -364,30 +365,44 @@ struct MenuView: View {
 
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(recentFiles.recentFiles, id: \.path) { fileInfo in
-                                Button(action: {
-                                    if let url = recentFiles.getURL(for: fileInfo) {
-                                        openMarkdownWindow(url: url)
-                                    }
-                                }) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "doc.text")
-                                                .font(.system(size: 10))
-                                            Text(URL(fileURLWithPath: fileInfo.path).lastPathComponent)
-                                                .font(.system(size: 11))
-                                                .lineLimit(1)
-                                            Spacer()
+                                HStack(spacing: 4) {
+                                    Button(action: {
+                                        if let url = recentFiles.getURL(for: fileInfo) {
+                                            openMarkdownWindow(url: url)
                                         }
-                                        Text("Added: \(formatDate(fileInfo.dateAdded))")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.secondary.opacity(0.5))
+                                    }) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "doc.text")
+                                                    .font(.system(size: 10))
+                                                Text(URL(fileURLWithPath: fileInfo.path).lastPathComponent)
+                                                    .font(.system(size: 11))
+                                                    .lineLimit(1)
+                                            }
+                                            Text("Added: \(formatDate(fileInfo.dateAdded))")
+                                                .font(.system(size: 9))
+                                                .foregroundColor(.secondary.opacity(0.5))
+                                        }
+                                        .contentShape(Rectangle())
+                                        .padding(.vertical, 4)
+                                        .padding(.horizontal, 4)
                                     }
-                                    .contentShape(Rectangle())
-                                    .padding(.vertical, 4)
-                                    .padding(.horizontal, 4)
+                                    .buttonStyle(.plain)
+                                    .foregroundColor(.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                    // Show in Finder button
+                                    Button(action: {
+                                        NSWorkspace.shared.selectFile(fileInfo.path, inFileViewerRootedAtPath: "")
+                                    }) {
+                                        Image(systemName: "folder")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                            .padding(4)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Show in Finder")
                                 }
-                                .buttonStyle(.plain)
-                                .foregroundColor(.primary)
                                 .background(Color.gray.opacity(0.05))
                             }
                         }
@@ -607,8 +622,9 @@ struct MarkdownView: View {
                 blocks.append(.blockQuote(String(trimmed.dropFirst(2))))
             }
             // Images - pattern: ![alt](url) or ![alt](url "title")
-            else if trimmed.range(of: "^!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)", options: .regularExpression) != nil {
-                let imagePattern = "^!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)"
+            // Check if the line contains ONLY an image (optionally with surrounding whitespace)
+            else if trimmed.range(of: "^!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)$", options: .regularExpression) != nil {
+                let imagePattern = "!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)"
                 if let regex = try? NSRegularExpression(pattern: imagePattern),
                    let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
                     let altText = match.range(at: 1).location != NSNotFound ? String(trimmed[Range(match.range(at: 1), in: trimmed)!]) : ""
