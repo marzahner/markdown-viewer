@@ -229,61 +229,110 @@ struct MenuView: View {
             .background(Color.gray.opacity(0.1))
 
             VStack(spacing: 12) {
-                Text("Drop .md file")
-                    .font(.headline)
-                    .padding(.top, 8)
+                // Improved drop zone with gradient and animation
+                VStack(spacing: 10) {
+                    Image(systemName: isDragging ? "arrow.down.circle.fill" : "doc.text.fill")
+                        .font(.system(size: 36))
+                        .foregroundColor(isDragging ? .accentColor : .secondary)
+                        .symbolRenderingMode(.hierarchical)
+                        .animation(.spring(response: 0.3), value: isDragging)
 
-                // Square drop zone
-                RoundedRectangle(cornerRadius: 0)
-                    .fill(isDragging ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
-                    .frame(width: 120, height: 120)
-                    .overlay(
-                        Image(systemName: "arrow.down.doc")
-                            .font(.system(size: 32))
-                            .foregroundColor(isDragging ? .accentColor : .secondary)
-                    )
-                    .onDrop(of: [UTType.fileURL], isTargeted: $isDragging) { providers in
-                        handleDrop(providers: providers)
-                        return true
-                    }
+                    Text(isDragging ? "Drop here" : "Drop .md file")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(isDragging ? .accentColor : .primary)
+
+                    Text("or click to browse")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(isDragging ?
+                            LinearGradient(colors: [Color.accentColor.opacity(0.15), Color.accentColor.opacity(0.05)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing) :
+                            LinearGradient(colors: [Color.gray.opacity(0.08), Color.gray.opacity(0.03)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(
+                            isDragging ? Color.accentColor.opacity(0.5) : Color.gray.opacity(0.2),
+                            style: StrokeStyle(lineWidth: 2, dash: isDragging ? [] : [5, 3])
+                        )
+                )
+                .scaleEffect(isDragging ? 1.02 : 1.0)
+                .animation(.spring(response: 0.3), value: isDragging)
+                .onDrop(of: [UTType.fileURL], isTargeted: $isDragging) { providers in
+                    handleDrop(providers: providers)
+                    return true
+                }
+                .padding(.top, 8)
 
                 // Date added below drop zone
                 if let date = lastDroppedDate {
-                    Text("Added: \(formatDate(date))")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .padding(.top, 4)
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 9))
+                        Text("Added \(formatDate(date))")
+                            .font(.system(size: 10))
+                    }
+                    .foregroundColor(.secondary.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(6)
                 }
 
-                // Theme selector
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Theme")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
+                // Theme selector - compact design
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "paintpalette.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text("Theme")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
 
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         ForEach(MarkdownTheme.allCases) { theme in
                             Button(action: {
                                 selectedTheme = theme
                             }) {
                                 VStack(spacing: 4) {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(theme.background)
-                                        .frame(width: 60, height: 40)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .stroke(selectedTheme == theme ? Color.accentColor : Color.clear, lineWidth: 2)
-                                        )
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(theme.background)
+                                            .frame(width: 56, height: 36)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 6)
+                                                    .strokeBorder(selectedTheme == theme ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: selectedTheme == theme ? 2.5 : 1)
+                                            )
+                                            .shadow(color: selectedTheme == theme ? Color.accentColor.opacity(0.3) : Color.clear, radius: 4, x: 0, y: 2)
+
+                                        if selectedTheme == theme {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(.accentColor)
+                                                .background(
+                                                    Circle()
+                                                        .fill(Color.white)
+                                                        .frame(width: 12, height: 12)
+                                                )
+                                        }
+                                    }
                                     Text(theme.rawValue)
-                                        .font(.system(size: 8))
-                                        .foregroundColor(.secondary)
+                                        .font(.system(size: 9, weight: selectedTheme == theme ? .semibold : .regular))
+                                        .foregroundColor(selectedTheme == theme ? .primary : .secondary)
                                 }
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
-                .padding(.top, 8)
+                .padding(.vertical, 8)
                 
                 if !recentFiles.recentFiles.isEmpty {
                     Divider()
@@ -419,6 +468,7 @@ enum MarkdownBlock {
     case listItem(String)
     case blockQuote(String)
     case codeBlock(String, language: String)
+    case image(url: String, alt: String)
     case space
 }
 
@@ -531,6 +581,16 @@ struct MarkdownView: View {
             else if trimmed.hasPrefix("> ") {
                 blocks.append(.blockQuote(String(trimmed.dropFirst(2))))
             }
+            // Images
+            else if let imageMatch = trimmed.range(of: "^!\\[([^\\]]*)\\]\\(([^\\)]+)(?:\\s+\"([^\"]+)\")?\\)", options: .regularExpression) {
+                let imagePattern = "^!\\[([^\\]]*)\\]\\(([^\\)]+)(?:\\s+\"([^\"]+)\")?\\)"
+                if let regex = try? NSRegularExpression(pattern: imagePattern),
+                   let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
+                    let altText = match.range(at: 1).location != NSNotFound ? String(trimmed[Range(match.range(at: 1), in: trimmed)!]) : ""
+                    let url = match.range(at: 2).location != NSNotFound ? String(trimmed[Range(match.range(at: 2), in: trimmed)!]) : ""
+                    blocks.append(.image(url: url, alt: altText))
+                }
+            }
             // Empty line
             else if trimmed.isEmpty {
                 blocks.append(.space)
@@ -559,6 +619,8 @@ struct MarkdownView: View {
             renderBlockQuote(text)
         case .codeBlock(let code, let language):
             renderCodeBlock(code, language: language)
+        case .image(let url, let alt):
+            renderImage(url: url, alt: alt)
         case .space:
             Spacer().frame(height: 8)
         }
@@ -657,49 +719,154 @@ struct MarkdownView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    
+
+    func renderImage(url: String, alt: String) -> some View {
+        Group {
+            if url.hasPrefix("http://") || url.hasPrefix("https://") {
+                // Remote image
+                AsyncImage(url: URL(string: url)) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding()
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: 600)
+                            .cornerRadius(8)
+                    case .failure:
+                        HStack(spacing: 8) {
+                            Image(systemName: "photo.badge.exclamationmark")
+                                .foregroundColor(theme.textSecondary)
+                            Text(alt.isEmpty ? "Failed to load image" : alt)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundColor(theme.textSecondary)
+                        }
+                        .padding()
+                        .background(theme.accent.opacity(0.1))
+                        .cornerRadius(8)
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+            } else {
+                // Local image - resolve relative to markdown file
+                let imageURL = resolveLocalImageURL(url)
+                if let imageURL = imageURL,
+                   let nsImage = NSImage(contentsOf: imageURL) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: 600)
+                        .cornerRadius(8)
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "photo.badge.exclamationmark")
+                            .foregroundColor(theme.textSecondary)
+                        Text(alt.isEmpty ? "Image not found: \(url)" : alt)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(theme.textSecondary)
+                    }
+                    .padding()
+                    .background(theme.accent.opacity(0.1))
+                    .cornerRadius(8)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 8)
+    }
+
+    func resolveLocalImageURL(_ path: String) -> URL? {
+        // If absolute path
+        if path.hasPrefix("/") {
+            return URL(fileURLWithPath: path)
+        }
+
+        // Relative to markdown file directory
+        let baseURL = fileURL.deletingLastPathComponent()
+        return baseURL.appendingPathComponent(path)
+    }
+
     func parseInlineMarkdown(_ text: String) -> AttributedString {
-        var result = AttributedString(text)
-        let workingString = text
-        
+        var processedText = text
+        var ranges: [(range: Range<String.Index>, type: String, originalLength: Int)] = []
+
+        // Find all markdown patterns and their positions
         // Bold **text**
         let boldPattern = "\\*\\*(.+?)\\*\\*"
         if let regex = try? NSRegularExpression(pattern: boldPattern) {
-            let matches = regex.matches(in: workingString, range: NSRange(workingString.startIndex..., in: workingString))
-            for match in matches.reversed() {
-                if let range = Range(match.range(at: 1), in: workingString) {
-                    if let attrRange = result.range(of: String(workingString[range])) {
-                        result[attrRange].font = .system(size: 15, weight: .bold, design: .monospaced)
-                    }
+            let matches = regex.matches(in: processedText, range: NSRange(processedText.startIndex..., in: processedText))
+            for match in matches {
+                if let range = Range(match.range, in: processedText),
+                   let contentRange = Range(match.range(at: 1), in: processedText) {
+                    ranges.append((range: contentRange, type: "bold", originalLength: match.range.length))
                 }
             }
         }
-        
+
+        // Inline code `code` - process before italic to avoid conflicts
+        let codePattern = "`([^`]+)`"
+        if let regex = try? NSRegularExpression(pattern: codePattern) {
+            let matches = regex.matches(in: processedText, range: NSRange(processedText.startIndex..., in: processedText))
+            for match in matches {
+                if let range = Range(match.range, in: processedText),
+                   let contentRange = Range(match.range(at: 1), in: processedText) {
+                    ranges.append((range: contentRange, type: "code", originalLength: match.range.length))
+                }
+            }
+        }
+
         // Italic *text*
         let italicPattern = "(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)"
         if let regex = try? NSRegularExpression(pattern: italicPattern) {
-            let matches = regex.matches(in: workingString, range: NSRange(workingString.startIndex..., in: workingString))
-            for match in matches.reversed() {
-                if let range = Range(match.range(at: 1), in: workingString) {
-                    if let attrRange = result.range(of: String(workingString[range])) {
-                        result[attrRange].font = .system(size: 15, weight: .regular, design: .monospaced).italic()
+            let matches = regex.matches(in: processedText, range: NSRange(processedText.startIndex..., in: processedText))
+            for match in matches {
+                if let range = Range(match.range, in: processedText),
+                   let contentRange = Range(match.range(at: 1), in: processedText) {
+                    // Check if this range is not inside a code block
+                    let isInCode = ranges.contains { $0.type == "code" && range.lowerBound >= $0.range.lowerBound && range.upperBound <= $0.range.upperBound }
+                    if !isInCode {
+                        ranges.append((range: contentRange, type: "italic", originalLength: match.range.length))
                     }
                 }
             }
         }
-        
-        // Inline code `code`
-        let codePattern = "`([^`]+)`"
-        if let regex = try? NSRegularExpression(pattern: codePattern) {
-            let matches = regex.matches(in: workingString, range: NSRange(workingString.startIndex..., in: workingString))
-            for match in matches.reversed() {
-                if let range = Range(match.range(at: 1), in: workingString) {
-                    if let attrRange = result.range(of: String(workingString[range])) {
-                        result[attrRange].font = .system(size: 14, weight: .semibold, design: .monospaced)
-                        result[attrRange].foregroundColor = theme.textPrimary
-                        result[attrRange].backgroundColor = theme.accent.opacity(0.5)
-                    }
-                }
+
+        // Remove markdown syntax
+        processedText = processedText.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "$1", options: .regularExpression)
+        processedText = processedText.replacingOccurrences(of: "`([^`]+)`", with: "$1", options: .regularExpression)
+        processedText = processedText.replacingOccurrences(of: "(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)", with: "$1", options: .regularExpression)
+
+        var result = AttributedString(processedText)
+
+        // Apply formatting to the content text (without markers)
+        // Bold
+        let boldContentPattern = "\\b\\w+\\b"
+        for (origRange, type, _) in ranges where type == "bold" {
+            let content = String(text[origRange])
+            if let range = result.range(of: content) {
+                result[range].font = .system(size: 15, weight: .bold, design: .monospaced)
+            }
+        }
+
+        // Code
+        for (origRange, type, _) in ranges where type == "code" {
+            let content = String(text[origRange])
+            if let range = result.range(of: content) {
+                result[range].font = .system(size: 14, weight: .semibold, design: .monospaced)
+                result[range].foregroundColor = theme.textPrimary
+                result[range].backgroundColor = theme.accent.opacity(0.5)
+            }
+        }
+
+        // Italic
+        for (origRange, type, _) in ranges where type == "italic" {
+            let content = String(text[origRange])
+            if let range = result.range(of: content) {
+                result[range].font = .system(size: 15, weight: .regular, design: .monospaced).italic()
             }
         }
 
