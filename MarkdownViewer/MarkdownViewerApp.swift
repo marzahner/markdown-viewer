@@ -743,67 +743,77 @@ struct MarkdownView: View {
     func renderImage(url: String, alt: String) -> some View {
         let _ = print("Rendering image: url=\(url), alt=\(alt)")
 
-        return VStack {
+        return Group {
             if url.hasPrefix("http://") || url.hasPrefix("https://") {
                 // Remote image
-                let _ = print("Loading remote image: \(url)")
-                AsyncImage(url: URL(string: url)) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                            .padding()
-                    case .success(let image):
-                        let _ = print("Successfully loaded remote image: \(url)")
-                        return image
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: 600)
-                            .cornerRadius(8)
-                    case .failure(let error):
-                        let _ = print("Failed to load remote image \(url): \(error)")
-                        return HStack(spacing: 8) {
-                            Image(systemName: "photo.badge.exclamationmark")
-                                .foregroundColor(theme.textSecondary)
-                            Text(alt.isEmpty ? "Failed to load image" : alt)
-                                .font(.system(size: 13, design: .monospaced))
-                                .foregroundColor(theme.textSecondary)
-                        }
-                        .padding()
-                        .background(theme.accent.opacity(0.1))
-                        .cornerRadius(8)
-                    @unknown default:
-                        return EmptyView()
-                    }
-                }
+                renderRemoteImage(url: url, alt: alt)
             } else {
-                // Local image - resolve relative to markdown file
-                let imageURL = resolveLocalImageURL(url)
-                let _ = print("Loading local image: \(url) -> \(imageURL?.path ?? "nil")")
-
-                if let imageURL = imageURL,
-                   let nsImage = NSImage(contentsOf: imageURL) {
-                    let _ = print("Successfully loaded local image: \(imageURL.path)")
-                    Image(nsImage: nsImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: 600)
-                        .cornerRadius(8)
-                } else {
-                    let _ = print("Failed to load local image: \(url)")
-                    HStack(spacing: 8) {
-                        Image(systemName: "photo.badge.exclamationmark")
-                            .foregroundColor(theme.textSecondary)
-                        Text(alt.isEmpty ? "Image not found: \(url)" : alt)
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(theme.textSecondary)
-                    }
-                    .padding()
-                    .background(theme.accent.opacity(0.1))
-                    .cornerRadius(8)
-                }
+                // Local image
+                renderLocalImage(url: url, alt: alt)
             }
         }
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    func renderRemoteImage(url: String, alt: String) -> some View {
+        let _ = print("Loading remote image: \(url)")
+        AsyncImage(url: URL(string: url)) { phase in
+            switch phase {
+            case .empty:
+                ProgressView()
+                    .padding()
+            case .success(let image):
+                let _ = print("Successfully loaded remote image: \(url)")
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: 600)
+                    .cornerRadius(8)
+            case .failure(let error):
+                let _ = print("Failed to load remote image \(url): \(error)")
+                HStack(spacing: 8) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .foregroundColor(theme.textSecondary)
+                    Text(alt.isEmpty ? "Failed to load image" : alt)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(theme.textSecondary)
+                }
+                .padding()
+                .background(theme.accent.opacity(0.1))
+                .cornerRadius(8)
+            @unknown default:
+                EmptyView()
+            }
+        }
+    }
+
+    @ViewBuilder
+    func renderLocalImage(url: String, alt: String) -> some View {
+        let imageURL = resolveLocalImageURL(url)
+        let _ = print("Loading local image: \(url) -> \(imageURL?.path ?? "nil")")
+
+        if let imageURL = imageURL,
+           let nsImage = NSImage(contentsOf: imageURL) {
+            let _ = print("Successfully loaded local image: \(imageURL.path)")
+            Image(nsImage: nsImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: 600)
+                .cornerRadius(8)
+        } else {
+            let _ = print("Failed to load local image: \(url)")
+            HStack(spacing: 8) {
+                Image(systemName: "photo.badge.exclamationmark")
+                    .foregroundColor(theme.textSecondary)
+                Text(alt.isEmpty ? "Image not found: \(url)" : alt)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(theme.textSecondary)
+            }
+            .padding()
+            .background(theme.accent.opacity(0.1))
+            .cornerRadius(8)
+        }
     }
 
     func resolveLocalImageURL(_ path: String) -> URL? {
