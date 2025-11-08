@@ -582,7 +582,7 @@ struct MarkdownView: View {
                 blocks.append(.blockQuote(String(trimmed.dropFirst(2))))
             }
             // Images
-            else if let imageMatch = trimmed.range(of: "^!\\[([^\\]]*)\\]\\(([^\\)]+)(?:\\s+\"([^\"]+)\")?\\)", options: .regularExpression) {
+            else if trimmed.range(of: "^!\\[([^\\]]*)\\]\\(([^\\)]+)(?:\\s+\"([^\"]+)\")?\\)", options: .regularExpression) != nil {
                 let imagePattern = "^!\\[([^\\]]*)\\]\\(([^\\)]+)(?:\\s+\"([^\"]+)\")?\\)"
                 if let regex = try? NSRegularExpression(pattern: imagePattern),
                    let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
@@ -633,7 +633,6 @@ struct MarkdownView: View {
             .foregroundColor(theme.textPrimary)
             .padding(.top, 8)
             .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     func renderParagraph(_ text: String) -> some View {
@@ -641,7 +640,6 @@ struct MarkdownView: View {
             .font(.system(size: 15, weight: .regular, design: .monospaced))
             .foregroundColor(theme.textSecondary)
             .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -654,7 +652,6 @@ struct MarkdownView: View {
                 .font(.system(size: 15, weight: .regular, design: .monospaced))
                 .foregroundColor(theme.textSecondary)
                 .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -668,7 +665,6 @@ struct MarkdownView: View {
                 .font(.system(size: 15, weight: .regular, design: .monospaced))
                 .foregroundColor(theme.textSecondary.opacity(0.8))
                 .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 4)
         .fixedSize(horizontal: false, vertical: true)
@@ -713,22 +709,19 @@ struct MarkdownView: View {
                     .foregroundColor(theme.codeText)
                     .padding(16)
                     .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(theme.codeBackground)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     func renderImage(url: String, alt: String) -> some View {
-        Group {
+        VStack {
             if url.hasPrefix("http://") || url.hasPrefix("https://") {
                 // Remote image
                 AsyncImage(url: URL(string: url)) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()
-                            .frame(maxWidth: .infinity, alignment: .center)
                             .padding()
                     case .success(let image):
                         image
@@ -775,7 +768,6 @@ struct MarkdownView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 8)
     }
 
@@ -800,8 +792,7 @@ struct MarkdownView: View {
         if let regex = try? NSRegularExpression(pattern: boldPattern) {
             let matches = regex.matches(in: processedText, range: NSRange(processedText.startIndex..., in: processedText))
             for match in matches {
-                if let range = Range(match.range, in: processedText),
-                   let contentRange = Range(match.range(at: 1), in: processedText) {
+                if let contentRange = Range(match.range(at: 1), in: processedText) {
                     ranges.append((range: contentRange, type: "bold", originalLength: match.range.length))
                 }
             }
@@ -812,8 +803,7 @@ struct MarkdownView: View {
         if let regex = try? NSRegularExpression(pattern: codePattern) {
             let matches = regex.matches(in: processedText, range: NSRange(processedText.startIndex..., in: processedText))
             for match in matches {
-                if let range = Range(match.range, in: processedText),
-                   let contentRange = Range(match.range(at: 1), in: processedText) {
+                if let contentRange = Range(match.range(at: 1), in: processedText) {
                     ranges.append((range: contentRange, type: "code", originalLength: match.range.length))
                 }
             }
@@ -844,7 +834,6 @@ struct MarkdownView: View {
 
         // Apply formatting to the content text (without markers)
         // Bold
-        let boldContentPattern = "\\b\\w+\\b"
         for (origRange, type, _) in ranges where type == "bold" {
             let content = String(text[origRange])
             if let range = result.range(of: content) {
