@@ -606,9 +606,9 @@ struct MarkdownView: View {
             else if trimmed.hasPrefix("> ") {
                 blocks.append(.blockQuote(String(trimmed.dropFirst(2))))
             }
-            // Images
-            else if trimmed.range(of: "^!\\[([^\\]]*)\\]\\(([^\\)]+)(?:\\s+\"([^\"]+)\")?\\)", options: .regularExpression) != nil {
-                let imagePattern = "^!\\[([^\\]]*)\\]\\(([^\\)]+)(?:\\s+\"([^\"]+)\")?\\)"
+            // Images - pattern: ![alt](url) or ![alt](url "title")
+            else if trimmed.range(of: "^!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)", options: .regularExpression) != nil {
+                let imagePattern = "^!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)"
                 if let regex = try? NSRegularExpression(pattern: imagePattern),
                    let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
                     let altText = match.range(at: 1).location != NSNotFound ? String(trimmed[Range(match.range(at: 1), in: trimmed)!]) : ""
