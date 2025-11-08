@@ -415,7 +415,24 @@ struct MenuView: View {
                 }
                 
                 Divider()
-                
+
+                Button(action: {
+                    restartApplication()
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11))
+                        Text("Restart")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(Color.yellow.opacity(0.15))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(Color.orange)
+
                 Button(action: {
                     NSApplication.shared.terminate(nil)
                 }) {
@@ -506,6 +523,17 @@ struct MenuView: View {
         ) { _ in
             WindowStateManager.shared.saveWindowState(window, forFile: url)
         }
+    }
+
+    func restartApplication() {
+        let url = URL(fileURLWithPath: Bundle.main.resourcePath!)
+        let path = url.deletingLastPathComponent().deletingLastPathComponent().absoluteString
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = [path]
+        task.launch()
+
+        NSApplication.shared.terminate(nil)
     }
 }
 
