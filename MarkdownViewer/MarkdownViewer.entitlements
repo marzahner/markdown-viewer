@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Allow outgoing network connections for loading remote images -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+
+	<!-- App Sandbox for enhanced security -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- Allow user-selected file access (read-only) for opening markdown files -->
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+
+	<!-- Allow downloads folder read access for common use case -->
+	<key>com.apple.security.files.downloads.read-only</key>
+	<true/>
+</dict>
+</plist>

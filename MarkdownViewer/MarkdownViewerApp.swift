@@ -164,11 +164,51 @@ struct MarkdownViewerApp: App {
 }
 
 class WindowCloseDelegate: NSObject, NSWindowDelegate {
+    var cleanupHandler: (() -> Void)?
+
     func windowWillClose(_ notification: Notification) {
         if let window = notification.object as? NSWindow {
-            print("WindowCloseDelegate: Window will close")
+            print("WindowCloseDelegate: Window will close - \(window.title)")
+
+            // Immediately hide the window
+            window.orderOut(nil)
+
+            // Clear all SwiftUI content to release the NSHostingView
+            if let hostingView = window.contentView {
+                hostingView.removeFromSuperview()
+            }
+
+            window.contentViewController = nil
             window.contentView = nil
+            window.windowController = nil
+            window.delegate = nil
+
+            // Call cleanup handler
+            cleanupHandler?()
+
+            print("WindowCloseDelegate: Window cleanup complete")
         }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        print("WindowCloseDelegate: Window should close - \(sender.title)")
+        return true
+    }
+}
+
+// Window controller to manage window lifecycle
+class MarkdownWindowController: NSWindowController {
+    var markdownWindow: NSWindow?
+
+    convenience init(window: NSWindow) {
+        self.init(window: window)
+        self.markdownWindow = window
+    }
+
+    deinit {
+        print("MarkdownWindowController: deinit called")
+        markdownWindow?.contentView = nil
+        markdownWindow = nil
     }
 }
 
@@ -176,6 +216,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var popover: NSPopover?
     var openWindows: [NSWindow] = []
+    var windowDelegates: [NSWindow: WindowCloseDelegate] = [:]
+    var windowControllers: [NSWindow: MarkdownWindowController] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -200,24 +242,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
 
-        print("Window closing: \(window.title)")
+        print("AppDelegate: Window closing: \(window.title)")
 
-        // Remove from tracking
+        // Remove from all tracking
         openWindows.removeAll { $0 == window }
+        windowDelegates.removeValue(forKey: window)
+        windowControllers.removeValue(forKey: window)
 
-        // Force window cleanup
-        DispatchQueue.main.async {
-            window.contentView = nil
-            window.windowController = nil
-        }
+        print("AppDelegate: Removed window, remaining: \(openWindows.count)")
     }
 
-    func addWindow(_ window: NSWindow) {
+    func addWindow(_ window: NSWindow, delegate: WindowCloseDelegate, controller: MarkdownWindowController) {
         openWindows.append(window)
-        window.isReleasedWhenClosed = true
+        windowDelegates[window] = delegate
+        windowControllers[window] = controller
 
-        // Set a window delegate to ensure proper cleanup
-        let delegate = WindowCloseDelegate()
+        // Set up cleanup handler
+        delegate.cleanupHandler = { [weak self, weak window] in
+            guard let self = self, let window = window else { return }
+            self.openWindows.removeAll { $0 == window }
+            self.windowDelegates.removeValue(forKey: window)
+            self.windowControllers.removeValue(forKey: window)
+        }
+
+        window.isReleasedWhenClosed = true
         window.delegate = delegate
 
         print("Added window, total open: \(openWindows.count)")
@@ -311,6 +359,9 @@ struct MenuView: View {
                 .onDrop(of: [UTType.fileURL], isTargeted: $isDragging) { providers in
                     handleDrop(providers: providers)
                     return true
+                }
+                .onTapGesture {
+                    openFilePicker()
                 }
                 .padding(.top, 8)
 
@@ -478,6 +529,24 @@ struct MenuView: View {
         }
     }
 
+    func openFilePicker() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [UTType(filenameExtension: "md")!]
+        panel.message = "Select a Markdown file to view"
+
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                DispatchQueue.main.async {
+                    lastDroppedDate = Date()
+                    openMarkdownWindow(url: url)
+                }
+            }
+        }
+    }
+
     func openMarkdownWindow(url: URL) {
         print("Opening file: \(url.path)")
         RecentFilesManager.shared.addFile(url)
@@ -498,9 +567,13 @@ struct MenuView: View {
             window.center()
         }
 
+        // Create delegate and controller for window management
+        let delegate = WindowCloseDelegate()
+        let controller = MarkdownWindowController(window: window)
+
         // Register window with AppDelegate for proper cleanup
         if let appDelegate = NSApplication.shared.delegate as? AppDelegate {
-            appDelegate.addWindow(window)
+            appDelegate.addWindow(window, delegate: delegate, controller: controller)
         }
 
         // Bring app and window to front
@@ -843,16 +916,31 @@ struct MarkdownView: View {
                             Text(alt.isEmpty ? "Failed to load image" : alt)
                                 .font(.system(size: 13, design: .monospaced))
                                 .foregroundColor(theme.textSecondary)
-                            Text("\(error.localizedDescription)")
+                            Text("Error: \(error.localizedDescription)")
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(theme.textSecondary.opacity(0.7))
+                            Text("URL: \(url)")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(theme.textSecondary.opacity(0.5))
+                                .lineLimit(2)
                         }
                     }
                     .padding()
                     .background(theme.accent.opacity(0.1))
                     .cornerRadius(8)
                     .onAppear {
-                        print("❌ Failed to load remote image \(url): \(error)")
+                        print("❌ Failed to load remote image")
+                        print("   URL: \(url)")
+                        print("   Error type: \(type(of: error))")
+                        print("   Error: \(error)")
+                        print("   Localized: \(error.localizedDescription)")
+
+                        // Check if it's an NSError with more details
+                        if let nsError = error as? NSError {
+                            print("   Domain: \(nsError.domain)")
+                            print("   Code: \(nsError.code)")
+                            print("   UserInfo: \(nsError.userInfo)")
+                        }
                     }
                 @unknown default:
                     EmptyView()
