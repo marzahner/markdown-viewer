@@ -2,46 +2,134 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Combine
 
+// MARK: - Theme Definition
+enum MarkdownTheme: String, CaseIterable, Identifiable {
+    case gameboy = "Game Boy"
+    case macos = "macOS"
+    case deepBlue = "Deep Blue"
+
+    var id: String { rawValue }
+
+    var background: Color {
+        switch self {
+        case .gameboy:
+            return Color(red: 0.608, green: 0.737, blue: 0.059) // #9bbc0f
+        case .macos:
+            return Color(NSColor.textBackgroundColor)
+        case .deepBlue:
+            return Color(red: 0.02, green: 0.063, blue: 0.961) // #0510F5
+        }
+    }
+
+    var textPrimary: Color {
+        switch self {
+        case .gameboy:
+            return Color(red: 0.059, green: 0.220, blue: 0.059) // #0f380f
+        case .macos:
+            return Color(NSColor.textColor)
+        case .deepBlue:
+            return Color.white
+        }
+    }
+
+    var textSecondary: Color {
+        switch self {
+        case .gameboy:
+            return Color(red: 0.192, green: 0.384, blue: 0.188) // #306230
+        case .macos:
+            return Color(NSColor.secondaryLabelColor)
+        case .deepBlue:
+            return Color(white: 0.8)
+        }
+    }
+
+    var accent: Color {
+        switch self {
+        case .gameboy:
+            return Color(red: 0.545, green: 0.675, blue: 0.059) // #8bac0f
+        case .macos:
+            return Color.accentColor
+        case .deepBlue:
+            return Color(white: 0.6)
+        }
+    }
+
+    var codeBackground: Color {
+        switch self {
+        case .gameboy:
+            return Color(red: 0.059, green: 0.220, blue: 0.059) // #0f380f
+        case .macos:
+            return Color(NSColor.controlBackgroundColor)
+        case .deepBlue:
+            return Color.black
+        }
+    }
+
+    var codeText: Color {
+        switch self {
+        case .gameboy:
+            return Color(red: 0.608, green: 0.737, blue: 0.059) // #9bbc0f
+        case .macos:
+            return Color(NSColor.textColor)
+        case .deepBlue:
+            return Color.white
+        }
+    }
+}
+
+// MARK: - File Info
+struct FileInfo: Codable {
+    let path: String
+    let dateAdded: Date
+}
+
 // MARK: - Recent Files Manager
 class RecentFilesManager: ObservableObject {
     static let shared = RecentFilesManager()
-    @Published var recentFiles: [URL] = []
+    @Published var recentFiles: [FileInfo] = []
     private let maxRecent = 5
     private let key = "recentMarkdownFiles"
-    
+
     init() {
         loadRecent()
     }
-    
+
     func addFile(_ url: URL) {
         // Remove if already exists
         recentFiles.removeAll { $0.path == url.path }
-        // Add to front
-        recentFiles.insert(url, at: 0)
+        // Add to front with current date
+        let fileInfo = FileInfo(path: url.path, dateAdded: Date())
+        recentFiles.insert(fileInfo, at: 0)
         // Limit to max
         if recentFiles.count > maxRecent {
             recentFiles = Array(recentFiles.prefix(maxRecent))
         }
         saveRecent()
     }
-    
-    private func saveRecent() {
-        let paths = recentFiles.map { $0.path }
-        UserDefaults.standard.set(paths, forKey: key)
-        print("Saved recent files: \(paths)")
+
+    func getURL(for fileInfo: FileInfo) -> URL? {
+        let url = URL(fileURLWithPath: fileInfo.path)
+        return FileManager.default.fileExists(atPath: fileInfo.path) ? url : nil
     }
-    
+
+    private func saveRecent() {
+        if let encoded = try? JSONEncoder().encode(recentFiles) {
+            UserDefaults.standard.set(encoded, forKey: key)
+            print("Saved recent files: \(recentFiles.map { $0.path })")
+        }
+    }
+
     private func loadRecent() {
-        guard let paths = UserDefaults.standard.array(forKey: key) as? [String] else {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let decoded = try? JSONDecoder().decode([FileInfo].self, from: data) else {
             print("No recent files found")
             return
         }
-        
-        recentFiles = paths.compactMap { path in
-            let url = URL(fileURLWithPath: path)
-            let exists = FileManager.default.fileExists(atPath: path)
-            print("Checking file: \(path), exists: \(exists)")
-            return exists ? url : nil
+
+        recentFiles = decoded.filter { fileInfo in
+            let exists = FileManager.default.fileExists(atPath: fileInfo.path)
+            print("Checking file: \(fileInfo.path), exists: \(exists)")
+            return exists
         }
         print("Loaded \(recentFiles.count) recent files")
     }
@@ -117,9 +205,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct MenuView: View {
     @State private var isDragging = false
+    @State private var selectedTheme: MarkdownTheme = .gameboy
+    @State private var lastDroppedDate: Date?
     @ObservedObject private var recentFiles = RecentFilesManager.shared
     let closeAction: () -> Void
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Header with close button
@@ -137,52 +227,91 @@ struct MenuView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color.gray.opacity(0.1))
-            
+
             VStack(spacing: 12) {
                 Text("Drop .md file")
                     .font(.headline)
                     .padding(.top, 8)
-                
+
+                // Square drop zone
                 RoundedRectangle(cornerRadius: 0)
                     .fill(isDragging ? Color.accentColor.opacity(0.2) : Color.gray.opacity(0.1))
-                    .frame(height: 50)
+                    .frame(width: 120, height: 120)
                     .overlay(
                         Image(systemName: "arrow.down.doc")
-                            .font(.title2)
+                            .font(.system(size: 32))
                             .foregroundColor(isDragging ? .accentColor : .secondary)
                     )
                     .onDrop(of: [UTType.fileURL], isTargeted: $isDragging) { providers in
                         handleDrop(providers: providers)
                         return true
                     }
+
+                // Date added below drop zone
+                if let date = lastDroppedDate {
+                    Text("Added: \(formatDate(date))")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .padding(.top, 4)
+                }
+
+                // Theme selector
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Theme")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+
+                    HStack(spacing: 6) {
+                        ForEach(MarkdownTheme.allCases) { theme in
+                            Button(action: {
+                                selectedTheme = theme
+                            }) {
+                                VStack(spacing: 4) {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(theme.background)
+                                        .frame(width: 60, height: 40)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .stroke(selectedTheme == theme ? Color.accentColor : Color.clear, lineWidth: 2)
+                                        )
+                                    Text(theme.rawValue)
+                                        .font(.system(size: 8))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(.top, 8)
                 
                 if !recentFiles.recentFiles.isEmpty {
                     Divider()
-                    
+
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Recent")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
-                            ForEach(recentFiles.recentFiles, id: \.path) { url in
+                            ForEach(recentFiles.recentFiles, id: \.path) { fileInfo in
                                 Button(action: {
-                                    openMarkdownWindow(url: url)
+                                    if let url = recentFiles.getURL(for: fileInfo) {
+                                        openMarkdownWindow(url: url)
+                                    }
                                 }) {
                                     VStack(alignment: .leading, spacing: 2) {
                                         HStack(spacing: 6) {
                                             Image(systemName: "doc.text")
                                                 .font(.system(size: 10))
-                                            Text(url.lastPathComponent)
+                                            Text(URL(fileURLWithPath: fileInfo.path).lastPathComponent)
                                                 .font(.system(size: 11))
                                                 .lineLimit(1)
                                             Spacer()
                                         }
-                                        if let timestamp = getFileTimestamp(url) {
-                                            Text(timestamp)
-                                                .font(.system(size: 9))
-                                                .foregroundColor(.secondary.opacity(0.5))
-                                        }
+                                        Text("Added: \(formatDate(fileInfo.dateAdded))")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.secondary.opacity(0.5))
                                     }
                                     .contentShape(Rectangle())
                                     .padding(.vertical, 4)
@@ -221,38 +350,34 @@ struct MenuView: View {
         .frame(width: 240)
     }
     
-    func getFileTimestamp(_ url: URL) -> String? {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let date = attrs[.modificationDate] as? Date else {
-            return nil
-        }
-        
+    func formatDate(_ date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
     }
-    
+
     func handleDrop(providers: [NSItemProvider]) {
         for provider in providers {
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
                 guard let data = item as? Data,
                       let url = URL(dataRepresentation: data, relativeTo: nil),
                       url.pathExtension == "md" else { return }
-                
+
                 DispatchQueue.main.async {
+                    lastDroppedDate = Date()
                     openMarkdownWindow(url: url)
                 }
             }
         }
     }
-    
+
     func openMarkdownWindow(url: URL) {
         print("Opening file: \(url.path)")
         RecentFilesManager.shared.addFile(url)
-        
+
         let savedFrame = WindowStateManager.shared.restoreWindowState(forFile: url)
         let defaultFrame = NSRect(x: 0, y: 0, width: 900, height: 700)
-        
+
         let window = NSWindow(
             contentRect: savedFrame ?? defaultFrame,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -260,14 +385,14 @@ struct MenuView: View {
             defer: false
         )
         window.title = url.lastPathComponent
-        window.contentView = NSHostingView(rootView: MarkdownView(fileURL: url, window: window))
-        
+        window.contentView = NSHostingView(rootView: MarkdownView(fileURL: url, window: window, theme: selectedTheme))
+
         if savedFrame == nil {
             window.center()
         }
-        
+
         window.makeKeyAndOrderFront(nil)
-        
+
         // Save position on move/resize
         NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification,
@@ -276,7 +401,7 @@ struct MenuView: View {
         ) { _ in
             WindowStateManager.shared.saveWindowState(window, forFile: url)
         }
-        
+
         NotificationCenter.default.addObserver(
             forName: NSWindow.didResizeNotification,
             object: window,
@@ -300,28 +425,24 @@ enum MarkdownBlock {
 struct MarkdownView: View {
     let fileURL: URL
     let window: NSWindow?
+    let theme: MarkdownTheme
     @State private var markdownString: String = ""
     @State private var isLoading = true
     @State private var parsedBlocks: [MarkdownBlock] = []
-    
-    // Game Boy colors
-    let gbBackground = Color(red: 0.608, green: 0.737, blue: 0.059) // #9bbc0f
-    let gbDarkest = Color(red: 0.059, green: 0.220, blue: 0.059) // #0f380f
-    let gbDark = Color(red: 0.192, green: 0.384, blue: 0.188) // #306230
-    let gbLight = Color(red: 0.545, green: 0.675, blue: 0.059) // #8bac0f
-    
-    init(fileURL: URL, window: NSWindow? = nil) {
+
+    init(fileURL: URL, window: NSWindow? = nil, theme: MarkdownTheme = .gameboy) {
         self.fileURL = fileURL
         self.window = window
+        self.theme = theme
     }
     
     var body: some View {
         ZStack {
-            gbBackground.ignoresSafeArea()
-            
+            theme.background.ignoresSafeArea()
+
             if isLoading {
                 ProgressView()
-                    .tint(gbDarkest)
+                    .tint(theme.textPrimary)
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
@@ -447,43 +568,43 @@ struct MarkdownView: View {
         let sizes: [CGFloat] = [32, 28, 24, 20, 18, 16]
         return Text(parseInlineMarkdown(text))
             .font(.system(size: sizes[min(level - 1, 5)], weight: .bold, design: .monospaced))
-            .foregroundColor(gbDarkest)
+            .foregroundColor(theme.textPrimary)
             .padding(.top, 8)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
-    
+
     func renderParagraph(_ text: String) -> some View {
         Text(parseInlineMarkdown(text))
             .font(.system(size: 15, weight: .regular, design: .monospaced))
-            .foregroundColor(gbDark)
+            .foregroundColor(theme.textSecondary)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
     }
-    
+
     func renderListItem(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text("•")
                 .font(.system(size: 15, weight: .bold, design: .monospaced))
-                .foregroundColor(gbDarkest)
+                .foregroundColor(theme.textPrimary)
             Text(parseInlineMarkdown(text))
                 .font(.system(size: 15, weight: .regular, design: .monospaced))
-                .foregroundColor(gbDark)
+                .foregroundColor(theme.textSecondary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .fixedSize(horizontal: false, vertical: true)
     }
-    
+
     func renderBlockQuote(_ text: String) -> some View {
         HStack(spacing: 12) {
             Rectangle()
-                .fill(gbDark)
+                .fill(theme.textSecondary)
                 .frame(width: 4)
             Text(parseInlineMarkdown(text))
                 .font(.system(size: 15, weight: .regular, design: .monospaced))
-                .foregroundColor(gbDark.opacity(0.8))
+                .foregroundColor(theme.textSecondary.opacity(0.8))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -497,13 +618,13 @@ struct MarkdownView: View {
                 if !language.isEmpty {
                     Text(language.uppercased())
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(gbBackground)
+                        .foregroundColor(theme.codeText)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                 }
-                
+
                 Spacer()
-                
+
                 Button(action: {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(code, forType: .string)
@@ -514,25 +635,25 @@ struct MarkdownView: View {
                         Text("COPY")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                     }
-                    .foregroundColor(gbBackground)
+                    .foregroundColor(theme.codeText)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(gbDarkest.opacity(0.5))
+                    .background(theme.codeBackground.opacity(0.5))
                 }
                 .buttonStyle(.plain)
                 .padding(4)
             }
-            .background(gbDarkest)
-            
+            .background(theme.codeBackground)
+
             ScrollView(.horizontal, showsIndicators: true) {
                 Text(code)
                     .font(.system(size: 14, weight: .medium, design: .monospaced))
-                    .foregroundColor(gbBackground)
+                    .foregroundColor(theme.codeText)
                     .padding(16)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(gbDarkest)
+            .background(theme.codeBackground)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -575,20 +696,20 @@ struct MarkdownView: View {
                 if let range = Range(match.range(at: 1), in: workingString) {
                     if let attrRange = result.range(of: String(workingString[range])) {
                         result[attrRange].font = .system(size: 14, weight: .semibold, design: .monospaced)
-                        result[attrRange].foregroundColor = gbDarkest
-                        result[attrRange].backgroundColor = gbLight.opacity(0.5)
+                        result[attrRange].foregroundColor = theme.textPrimary
+                        result[attrRange].backgroundColor = theme.accent.opacity(0.5)
                     }
                 }
             }
         }
-        
+
         return result
     }
     
     func highlightCode(_ code: String, language: String) -> AttributedString {
         var result = AttributedString(code)
-        result.foregroundColor = gbLight
-        
+        result.foregroundColor = theme.accent
+
         let keywords: [String] = {
             switch language.lowercased() {
             case "swift":
@@ -601,7 +722,7 @@ struct MarkdownView: View {
                 return []
             }
         }()
-        
+
         for keyword in keywords {
             let pattern = "\\b\(keyword)\\b"
             if let regex = try? NSRegularExpression(pattern: pattern) {
@@ -609,13 +730,13 @@ struct MarkdownView: View {
                 for match in matches {
                     if let range = Range(match.range, in: code),
                        let attrRange = result.range(of: String(code[range])) {
-                        result[attrRange].foregroundColor = gbBackground
+                        result[attrRange].foregroundColor = theme.background
                         result[attrRange].font = .system(size: 13, weight: .bold, design: .monospaced)
                     }
                 }
             }
         }
-        
+
         return result
     }
 }
