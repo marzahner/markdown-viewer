@@ -155,7 +155,7 @@ class WindowStateManager {
 @main
 struct MarkdownViewerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    
+
     var body: some Scene {
         Settings {
             EmptyView()
@@ -163,10 +163,19 @@ struct MarkdownViewerApp: App {
     }
 }
 
+class WindowCloseDelegate: NSObject, NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        if let window = notification.object as? NSWindow {
+            print("WindowCloseDelegate: Window will close")
+            window.contentView = nil
+        }
+    }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var popover: NSPopover?
-    var openWindows = NSHashTable<NSWindow>.weakObjects()
+    var openWindows: [NSWindow] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -189,20 +198,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func windowWillClose(_ notification: Notification) {
-        if let window = notification.object as? NSWindow {
-            // Remove all observers for this window
-            NotificationCenter.default.removeObserver(self, name: NSWindow.didMoveNotification, object: window)
-            NotificationCenter.default.removeObserver(self, name: NSWindow.didResizeNotification, object: window)
+        guard let window = notification.object as? NSWindow else { return }
 
-            // Clear the content view and delegate
+        print("Window closing: \(window.title)")
+
+        // Remove from tracking
+        openWindows.removeAll { $0 == window }
+
+        // Force window cleanup
+        DispatchQueue.main.async {
             window.contentView = nil
-            window.delegate = nil
+            window.windowController = nil
         }
     }
 
     func addWindow(_ window: NSWindow) {
-        openWindows.add(window)
+        openWindows.append(window)
         window.isReleasedWhenClosed = true
+
+        // Set a window delegate to ensure proper cleanup
+        let delegate = WindowCloseDelegate()
+        window.delegate = delegate
+
+        print("Added window, total open: \(openWindows.count)")
     }
     
     func setupPopover() {
@@ -794,31 +812,54 @@ struct MarkdownView: View {
     func renderRemoteImage(url: String, alt: String) -> some View {
         let _ = print("Loading remote image: \(url)")
         AsyncImage(url: URL(string: url)) { phase in
-            switch phase {
-            case .empty:
-                ProgressView()
+            Group {
+                switch phase {
+                case .empty:
+                    HStack {
+                        ProgressView()
+                        Text("Loading...")
+                            .font(.system(size: 12))
+                            .foregroundColor(theme.textSecondary)
+                    }
+                    .frame(height: 50)
                     .padding()
-            case .success(let image):
-                let _ = print("Successfully loaded remote image: \(url)")
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: 600)
+                    .onAppear {
+                        print("AsyncImage phase: .empty for \(url)")
+                    }
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: 600)
+                        .cornerRadius(8)
+                        .onAppear {
+                            print("✅ Successfully loaded remote image: \(url)")
+                        }
+                case .failure(let error):
+                    HStack(spacing: 8) {
+                        Image(systemName: "photo.badge.exclamationmark")
+                            .foregroundColor(theme.textSecondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(alt.isEmpty ? "Failed to load image" : alt)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundColor(theme.textSecondary)
+                            Text("\(error.localizedDescription)")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(theme.textSecondary.opacity(0.7))
+                        }
+                    }
+                    .padding()
+                    .background(theme.accent.opacity(0.1))
                     .cornerRadius(8)
-            case .failure(let error):
-                let _ = print("Failed to load remote image \(url): \(error)")
-                HStack(spacing: 8) {
-                    Image(systemName: "photo.badge.exclamationmark")
-                        .foregroundColor(theme.textSecondary)
-                    Text(alt.isEmpty ? "Failed to load image" : alt)
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(theme.textSecondary)
+                    .onAppear {
+                        print("❌ Failed to load remote image \(url): \(error)")
+                    }
+                @unknown default:
+                    EmptyView()
+                        .onAppear {
+                            print("⚠️ Unknown AsyncImage phase for \(url)")
+                        }
                 }
-                .padding()
-                .background(theme.accent.opacity(0.1))
-                .cornerRadius(8)
-            @unknown default:
-                EmptyView()
             }
         }
     }
