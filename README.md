@@ -28,4 +28,6 @@ Game Boy themed menu bar markdown reader for macOS.
 - macOS 13.0+
 - Xcode 14.0+
 
+## File Preview
 
+![Screenshot](markdown-viewer-screenshot.avif "Markdown Screenshot")
