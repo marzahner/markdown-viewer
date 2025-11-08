@@ -166,17 +166,37 @@ struct MarkdownViewerApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var popover: NSPopover?
-    
+    var openWindows: Set<NSWindow> = []
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
+
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: "Markdown Viewer")
             button.action = #selector(togglePopover)
             button.target = self
         }
-        
+
         setupPopover()
+
+        // Listen for window close notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: nil
+        )
+    }
+
+    @objc func windowWillClose(_ notification: Notification) {
+        if let window = notification.object as? NSWindow {
+            openWindows.remove(window)
+        }
+    }
+
+    func addWindow(_ window: NSWindow) {
+        openWindows.insert(window)
+        window.isReleasedWhenClosed = true
     }
     
     func setupPopover() {
@@ -440,6 +460,11 @@ struct MenuView: View {
             window.center()
         }
 
+        // Register window with AppDelegate for proper cleanup
+        if let appDelegate = NSApplication.shared.delegate as? AppDelegate {
+            appDelegate.addWindow(window)
+        }
+
         window.makeKeyAndOrderFront(nil)
 
         // Save position on move/resize
@@ -588,6 +613,7 @@ struct MarkdownView: View {
                    let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
                     let altText = match.range(at: 1).location != NSNotFound ? String(trimmed[Range(match.range(at: 1), in: trimmed)!]) : ""
                     let url = match.range(at: 2).location != NSNotFound ? String(trimmed[Range(match.range(at: 2), in: trimmed)!]) : ""
+                    print("Found image: alt=\(altText), url=\(url)")
                     blocks.append(.image(url: url, alt: altText))
                 }
             }
@@ -715,21 +741,25 @@ struct MarkdownView: View {
     }
 
     func renderImage(url: String, alt: String) -> some View {
-        VStack {
+        print("Rendering image: url=\(url), alt=\(alt)")
+        return VStack {
             if url.hasPrefix("http://") || url.hasPrefix("https://") {
                 // Remote image
+                print("Loading remote image: \(url)")
                 AsyncImage(url: URL(string: url)) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()
                             .padding()
                     case .success(let image):
+                        print("Successfully loaded remote image: \(url)")
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(maxWidth: 600)
                             .cornerRadius(8)
-                    case .failure:
+                    case .failure(let error):
+                        print("Failed to load remote image \(url): \(error)")
                         HStack(spacing: 8) {
                             Image(systemName: "photo.badge.exclamationmark")
                                 .foregroundColor(theme.textSecondary)
@@ -747,14 +777,17 @@ struct MarkdownView: View {
             } else {
                 // Local image - resolve relative to markdown file
                 let imageURL = resolveLocalImageURL(url)
+                print("Loading local image: \(url) -> \(imageURL?.path ?? "nil")")
                 if let imageURL = imageURL,
                    let nsImage = NSImage(contentsOf: imageURL) {
+                    print("Successfully loaded local image: \(imageURL.path)")
                     Image(nsImage: nsImage)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxWidth: 600)
                         .cornerRadius(8)
                 } else {
+                    print("Failed to load local image: \(url)")
                     HStack(spacing: 8) {
                         Image(systemName: "photo.badge.exclamationmark")
                             .foregroundColor(theme.textSecondary)
