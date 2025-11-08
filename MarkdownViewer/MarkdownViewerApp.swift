@@ -651,18 +651,43 @@ struct MarkdownView: View {
     }
     
     func loadMarkdown() {
+        print("📖 Loading markdown from: \(fileURL.path)")
+
         DispatchQueue.global(qos: .userInitiated).async {
+            // Start accessing security-scoped resource (required for App Sandbox)
+            let didStartAccess = self.fileURL.startAccessingSecurityScopedResource()
+            print("Security-scoped resource access: \(didStartAccess)")
+
+            defer {
+                if didStartAccess {
+                    self.fileURL.stopAccessingSecurityScopedResource()
+                    print("Stopped accessing security-scoped resource")
+                }
+            }
+
             do {
-                let content = try String(contentsOf: fileURL, encoding: .utf8)
-                let blocks = parseMarkdown(content)
+                print("Attempting to read file...")
+                let content = try String(contentsOf: self.fileURL, encoding: .utf8)
+                print("✅ Successfully read \(content.count) characters")
+                let blocks = self.parseMarkdown(content)
                 DispatchQueue.main.async {
                     self.parsedBlocks = blocks
                     self.markdownString = content
                     self.isLoading = false
+                    print("✅ Markdown loaded and parsed successfully")
                 }
             } catch {
+                print("❌ Error loading file: \(error)")
+                print("   Error type: \(type(of: error))")
+                if let nsError = error as NSError? {
+                    print("   Domain: \(nsError.domain)")
+                    print("   Code: \(nsError.code)")
+                    print("   Description: \(nsError.localizedDescription)")
+                    print("   UserInfo: \(nsError.userInfo)")
+                }
+
                 DispatchQueue.main.async {
-                    self.parsedBlocks = [.paragraph("Error loading file: \(error.localizedDescription)")]
+                    self.parsedBlocks = [.paragraph("Error loading file: \(error.localizedDescription)\n\nFile: \(self.fileURL.path)")]
                     self.isLoading = false
                 }
             }
@@ -957,20 +982,41 @@ struct MarkdownView: View {
         let imageURL = resolveLocalImageURL(url)
         let _ = print("Loading local image: \(url) -> \(imageURL?.path ?? "nil")")
 
-        if let imageURL = imageURL,
-           let nsImage = NSImage(contentsOf: imageURL) {
-            let _ = print("Successfully loaded local image: \(imageURL.path)")
-            Image(nsImage: nsImage)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: 600)
+        if let imageURL = imageURL {
+            // For local images, we need security-scoped access
+            let didStartAccess = fileURL.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccess {
+                    fileURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            if let nsImage = NSImage(contentsOf: imageURL) {
+                let _ = print("✅ Successfully loaded local image: \(imageURL.path)")
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: 600)
+                    .cornerRadius(8)
+            } else {
+                let _ = print("❌ Failed to load local image from disk: \(url)")
+                HStack(spacing: 8) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .foregroundColor(theme.textSecondary)
+                    Text(alt.isEmpty ? "Image not found: \(url)" : alt)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(theme.textSecondary)
+                }
+                .padding()
+                .background(theme.accent.opacity(0.1))
                 .cornerRadius(8)
+            }
         } else {
-            let _ = print("Failed to load local image: \(url)")
+            let _ = print("❌ Failed to resolve local image URL: \(url)")
             HStack(spacing: 8) {
                 Image(systemName: "photo.badge.exclamationmark")
                     .foregroundColor(theme.textSecondary)
-                Text(alt.isEmpty ? "Image not found: \(url)" : alt)
+                Text(alt.isEmpty ? "Invalid image path: \(url)" : alt)
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundColor(theme.textSecondary)
             }
