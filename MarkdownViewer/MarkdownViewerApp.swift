@@ -583,8 +583,6 @@ struct MarkdownView: View {
         let lines = markdown.components(separatedBy: .newlines)
         var i = 0
 
-        print("Parsing markdown with \(lines.count) lines")
-
         while i < lines.count {
             let line = lines[i]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -634,20 +632,15 @@ struct MarkdownView: View {
             // Images - pattern: ![alt](url) or ![alt](url "title")
             // Check if the line contains ONLY an image (optionally with surrounding whitespace)
             else if trimmed.hasPrefix("![") {
-                print("Line starts with image marker: '\(trimmed)'")
                 if trimmed.range(of: "^!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)$", options: .regularExpression) != nil {
                     let imagePattern = "!\\[([^\\]]*)\\]\\(([^\\s\\)]+)(?:\\s+\"([^\"]+)\")?\\)"
                     if let regex = try? NSRegularExpression(pattern: imagePattern),
                        let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
                         let altText = match.range(at: 1).location != NSNotFound ? String(trimmed[Range(match.range(at: 1), in: trimmed)!]) : ""
                         let url = match.range(at: 2).location != NSNotFound ? String(trimmed[Range(match.range(at: 2), in: trimmed)!]) : ""
-                        print("✅ Found image: alt=\(altText), url=\(url)")
                         blocks.append(.image(url: url, alt: altText))
-                    } else {
-                        print("❌ Image regex didn't match")
                     }
                 } else {
-                    print("❌ Image pattern test failed for: '\(trimmed)'")
                     // Still try to parse as paragraph
                     blocks.append(.paragraph(line))
                 }
@@ -776,8 +769,6 @@ struct MarkdownView: View {
     }
 
     func renderImage(url: String, alt: String) -> some View {
-        let _ = print("Rendering image: url=\(url), alt=\(alt)")
-
         return Group {
             if url.hasPrefix("http://") || url.hasPrefix("https://") {
                 // Remote image
@@ -792,52 +783,47 @@ struct MarkdownView: View {
 
     @ViewBuilder
     func renderRemoteImage(url: String, alt: String) -> some View {
-        let _ = print("Loading remote image: \(url)")
-        AsyncImage(url: URL(string: url)) { phase in
-            switch phase {
-            case .empty:
-                ProgressView()
-                    .padding()
-            case .success(let image):
-                let _ = print("Successfully loaded remote image: \(url)")
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: 600)
-                    .cornerRadius(8)
-            case .failure(let error):
-                let _ = print("Failed to load remote image \(url): \(error)")
-                HStack(spacing: 8) {
-                    Image(systemName: "photo.badge.exclamationmark")
-                        .foregroundColor(theme.textSecondary)
-                    Text(alt.isEmpty ? "Failed to load image" : alt)
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(theme.textSecondary)
+        // Display remote images as formatted markdown text with indentation
+        HStack(spacing: 12) {
+            Rectangle()
+                .fill(theme.accent)
+                .frame(width: 4)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 12))
+                        .foregroundColor(theme.textPrimary)
+                    Text("Remote Image")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(theme.textPrimary)
                 }
-                .padding()
-                .background(theme.accent.opacity(0.1))
-                .cornerRadius(8)
-            @unknown default:
-                EmptyView()
+                if !alt.isEmpty {
+                    Text(alt)
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .foregroundColor(theme.textPrimary)
+                }
+                Text(url)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(theme.textSecondary)
+                    .textSelection(.enabled)
             }
+            .padding(.vertical, 8)
         }
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder
     func renderLocalImage(url: String, alt: String) -> some View {
         let imageURL = resolveLocalImageURL(url)
-        let _ = print("Loading local image: \(url) -> \(imageURL?.path ?? "nil")")
 
         if let imageURL = imageURL,
            let nsImage = NSImage(contentsOf: imageURL) {
-            let _ = print("Successfully loaded local image: \(imageURL.path)")
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(maxWidth: 600)
                 .cornerRadius(8)
         } else {
-            let _ = print("Failed to load local image: \(url)")
             HStack(spacing: 8) {
                 Image(systemName: "photo.badge.exclamationmark")
                     .foregroundColor(theme.textSecondary)

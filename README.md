@@ -4,12 +4,26 @@ Game Boy themed menu bar markdown reader for macOS.
 
 ## Features
 
+### Core Functionality
 ✓ **Persistent menu** - Click to open, stays open until X button clicked
-✓ **Timestamps** - 50% opacity timestamps to differentiate files
-✓ **Code blocks readable** - Dark bg, bright text, copy button
-✓ **Text selectable** - All content
-✓ **Recent files (5)** - Shows last modified time
+✓ **Drag & drop** - Drop .md files to open in new windows
+✓ **Recent files (5)** - Shows last modified time with "Show in Finder" button
+✓ **Window state** - Remembers position and size per file
 ✓ **No auto-popup** - Manual control only
+
+### Markdown Support
+✓ **Headers** - All 6 levels with appropriate sizing
+✓ **Text formatting** - Bold, italic, inline code with syntax highlighting
+✓ **Lists** - Bullet and numbered lists
+✓ **Block quotes** - Styled with left border and indentation
+✓ **Code blocks** - Syntax highlighting with copy button
+✓ **Images** - Local images rendered, remote images displayed as formatted text
+✓ **Text selection** - All content selectable
+
+### Themes
+✓ **Game Boy** - Classic green palette (default)
+✓ **macOS** - System colors
+✓ **Deep Blue** - High contrast blue theme
 
 ## Build & Run
 
@@ -25,8 +39,13 @@ Game Boy themed menu bar markdown reader for macOS.
 
 ## Requirements
 
-- macOS 13.0+
-- Xcode 14.0+
+![macOS](https://img.shields.io/badge/macOS-14.0+-blue)
+![Swift](https://img.shields.io/badge/Swift-5.9-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+- macOS 14.0+
+- Xcode 15.0+
+- Swift 5.9+
 
 ## File Preview
 
